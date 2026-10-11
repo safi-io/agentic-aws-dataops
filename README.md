@@ -61,13 +61,14 @@ flowchart TD
     end
 
     subgraph Pipeline ["Dagster Orchestration"]
+        RawSensor["s3_raw_bronze_sensor"]
         Ingest["orders_bronze_data Asset"]
         Validate["orders_validated_silver Asset"]
-        Sensor["pending_incident_sensor"]
+        IncSensor["pending_incident_sensor"]
         RemJob["incident_remediation_job"]
     end
 
-    subgraph State ["Database (PostgreSQL / SQLite)"]
+    subgraph State ["Database (Amazon RDS / PostgreSQL)"]
         IncTable[("dataops_incidents\n(pending, processing, resolved)")]
     end
 
@@ -92,12 +93,13 @@ flowchart TD
         Dashboard["Incident Control Center & Audit Trail"]
     end
 
-    Bronze --> Ingest --> Validate
+    Bronze -. Polls for new files .-> RawSensor
+    RawSensor -- Triggers pipeline -- Ingest --> Validate
     Validate -- Valid batch --> Silver
     Validate -- Failure detected --> IncTable
 
-    IncTable -. Status: pending .-> Sensor
-    Sensor --> RemJob
+    IncTable -. Status: pending .-> IncSensor
+    IncSensor --> RemJob
     RemJob --> Decider
     Decider --> Policy --> Dispatcher --> Tools
     Tools --> IncTable
@@ -268,10 +270,11 @@ agentic-aws-dataops/
 ├── .gitignore                          # Git ignore rules
 ├── dagster_project/                    # Dagster orchestration package
 │   ├── __init__.py
-│   ├── definitions.py                  # Dagster entrypoint (assets, jobs, sensors)
-│   ├── assets.py                       # Bronze ingestion & Silver validation assets
-│   ├── jobs.py                         # Pipeline & incident remediation jobs
-│   └── sensors.py                      # Pending incident sensor with deduplication
+│   ├── definitions.py                  # Dagster entrypoint (assets, jobs, sensors, resources)
+│   ├── resources.py                    # Reusable S3Resource & RDSResource
+│   ├── assets.py                       # Bronze raw ingestion & Silver validation assets
+│   ├── jobs.py                         # Ingestion pipeline & incident remediation jobs
+│   └── sensors.py                      # Raw Bronze S3 sensor & PostgreSQL incident sensor
 ├── dataops_agent/                      # Core agent logic & tools
 │   ├── __init__.py
 │   ├── incident_state.py               # Incident models & status lifecycle
@@ -296,6 +299,8 @@ agentic-aws-dataops/
 │   └── high_null_rate.csv              # Quality threshold violation scenario
 ├── tests/                              # Unit & integration tests
 │   ├── __init__.py
+│   ├── test_resources.py               # S3 & RDS resource configuration tests
+│   ├── test_s3_raw_sensor.py           # Raw Bronze S3 discovery & deduplication tests
 │   ├── test_tools.py                   # Tool execution tests
 │   ├── test_decider.py                 # Strands Decider selection tests
 │   └── test_policies.py                # Guardrail & policy tests
@@ -344,10 +349,9 @@ cp .env.example .env
 ### 3. Initialize the Database
 
 ```bash
-# Apply schema to your PostgreSQL instance
+# Apply schema to your PostgreSQL / Amazon RDS instance
 psql -h localhost -U postgres -d dataops_db -f sql/create_incidents.sql
 ```
-*(If running offline, the system automatically uses a local SQLite fallback in `./storage/incidents.db`)*
 
 ### 4. Run Test Suite
 
