@@ -1,0 +1,5 @@
+# Dagster instance configuration for Agentic AWS DataOps
+# Stored locally within the dagster_project directory
+telemetry:
+  enabled: false
+
