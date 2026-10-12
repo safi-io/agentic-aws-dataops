@@ -39,28 +39,21 @@ def orders_bronze_data(
     s3: S3Resource,
 ) -> str:
     """Reads Bronze source CSV file from Amazon S3 raw zone or local fallback."""
-    # 1. If triggered by raw S3 sensor with an S3 key
-    if config.s3_key:
-        bucket = config.s3_bucket or s3.bucket_name
-        if not bucket:
-            raise ValueError("S3 bucket name not provided in config or S3Resource.")
 
-        s3_uri = f"s3://{bucket}/{config.s3_key}"
-        context.log.info(f"Downloading raw CSV from {s3_uri} using S3Resource...")
+    bucket = config.s3_bucket or s3.bucket_name
+    if not bucket:
+        raise ValueError("S3 bucket name not provided in config or S3Resource.")
 
-        # Cache locally in storage/bronze for downstream validation & incident diagnostic tools
-        storage_dir = os.path.join(os.getenv("LOCAL_STORAGE_DIR", "./storage"), "bronze")
-        local_target = os.path.join(storage_dir, os.path.basename(config.s3_key))
+    s3_uri = f"s3://{bucket}/{config.s3_key}"
+    context.log.info(f"Downloading raw CSV from {s3_uri} using S3Resource...")
 
-        s3.download_file(key=config.s3_key, local_path=local_target, bucket=bucket)
-        context.log.info(f"Saved raw file locally to {local_target} for validation.")
-        return local_target
+    # Cache locally in storage/bronze for downstream validation & incident diagnostic tools
+    storage_dir = os.path.join(os.getenv("LOCAL_STORAGE_DIR", "./storage"), "bronze")
+    local_target = os.path.join(storage_dir, os.path.basename(config.s3_key))
 
-    # 2. Local file path fallback
-    source_csv = config.file_path or os.getenv("SOURCE_CSV_PATH", "sample_data/clean.csv")
-    context.log.info(f"Referencing Bronze source file: {source_csv}")
-    return source_csv
-
+    s3.download_file(key=config.s3_key, local_path=local_target, bucket=bucket)
+    context.log.info(f"Saved raw file locally to {local_target} for validation.")
+    return local_target
 
 @asset(group_name="validation")
 def orders_validated_silver(

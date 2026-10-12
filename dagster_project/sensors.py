@@ -1,5 +1,3 @@
-"""Dagster sensors for incident detection and Amazon S3 Raw (Bronze) event monitoring."""
-
 import json
 from typing import Any, Dict, List
 from dagster import RunRequest, SensorEvaluationContext, SkipReason, sensor
@@ -51,10 +49,7 @@ def pending_incident_sensor(
         )
 
 
-# ==============================================================================
-# S3 Raw (Bronze) Zone Event-Driven Sensor
-# ==============================================================================
-
+# S3 Raw Zone Polling for new CSV's
 @sensor(
     job=orders_pipeline_job,
     minimum_interval_seconds=30,
@@ -77,7 +72,7 @@ def s3_raw_bronze_sensor(
         )
         return
 
-    # Bronze raw prefix (default bronze/)
+    # Bronze raw prefix
     target_prefix = s3.prefix or "bronze/"
 
     try:

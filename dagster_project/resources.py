@@ -82,6 +82,8 @@ class S3Resource(ConfigurableResource):
 
         return boto3.client(**client_kwargs)
 
+# dagster dev -m dagster_project.definitions
+
     def list_objects(
         self,
         prefix: Optional[str] = None,
