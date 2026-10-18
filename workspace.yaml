@@ -1,0 +1,5 @@
+load_from:
+  - python_module:
+      module_name: dagster_project
+      attribute: defs
+      location_name: agentic_dataops

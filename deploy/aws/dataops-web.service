@@ -1,0 +1,19 @@
+[Unit]
+Description=DataOps Dagster webserver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dataops
+Group=dataops
+WorkingDirectory=/var/lib/dataops/dagster
+EnvironmentFile=/etc/dataops/runtime.env
+ExecStart=/opt/dataops/venv/bin/dagster-webserver --workspace /opt/dataops/app/workspace.yaml --host 127.0.0.1 --port 3000 --path-prefix /dagster
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

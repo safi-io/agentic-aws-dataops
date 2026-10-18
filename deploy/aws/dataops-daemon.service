@@ -1,0 +1,19 @@
+[Unit]
+Description=DataOps Dagster scheduler and queued run launcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dataops
+Group=dataops
+WorkingDirectory=/var/lib/dataops/dagster
+EnvironmentFile=/etc/dataops/runtime.env
+ExecStart=/opt/dataops/venv/bin/dagster-daemon run --workspace /opt/dataops/app/workspace.yaml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
