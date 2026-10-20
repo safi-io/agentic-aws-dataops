@@ -4,7 +4,18 @@ An S3 data quality pipeline with Dagster orchestration, PostgreSQL incident trac
 
 CSV batches remain unchanged in Bronze. Valid batches are written to Silver as Parquet. Failed batches create incidents for inspection, quarantine, retry assessment, or escalation.
 
-## Setup
+## Hosted application
+
+The shared application is already deployed on AWS. Open these links in your browser:
+
+| Application | URL | Purpose |
+| --- | --- | --- |
+| Dagster | https://44.196.49.100.sslip.io/dagster/ | Launch pipeline jobs and inspect runs, assets, and sensors |
+| Incident dashboard | https://44.196.49.100.sslip.io/dashboard/ | Review incidents, evidence, reports, and manual review actions |
+
+Both applications require the shared team login. Get the username and password privately from the maintainer. Browser access does not require a local installation or AWS credentials.
+
+## Local setup
 
 Requires Python 3.11 or later, an S3 bucket, and PostgreSQL. AWS deployment also requires an AWS profile with access to the relevant resources.
 
@@ -27,6 +38,8 @@ python scripts/run.py dashboard --env-file .env.aws.local
 ```
 
 Dagster: http://127.0.0.1:3000 · Dashboard: http://127.0.0.1:8501
+
+These local URLs work only while the corresponding services are running on your computer. Use the [hosted application](#hosted-application) links above to access the shared AWS deployment.
 
 For optional local development, copy `.env.example` to `.env`, run `docker compose up -d`, and use `--env-file .env`. Compose initializes PostgreSQL and seeds the S3 emulator with the sample batches. LocalStack provides S3 only; Bedrock reports require AWS.
 
