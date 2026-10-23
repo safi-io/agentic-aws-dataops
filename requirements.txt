@@ -1,0 +1,15 @@
+boto3>=1.34
+botocore>=1.34
+dagster>=1.8
+dagster-webserver>=1.8
+httpx>=0.27
+pandas>=2.2
+pyarrow>=15.0
+psycopg[binary]>=3.2
+pydantic>=2.8
+pydantic-settings>=2.4
+python-dotenv>=1.0
+SQLAlchemy>=2.0
+streamlit>=1.37
+strands-decider
+tenacity>=8.3

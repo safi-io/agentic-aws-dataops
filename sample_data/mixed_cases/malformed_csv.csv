@@ -1,0 +1,2 @@
+order_id,customer_id,order_date,status,amount,currency
+10001,20001,2026-10-01,"unclosed,25.00,USD

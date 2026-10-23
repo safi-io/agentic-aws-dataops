@@ -1,98 +1,215 @@
-"""Python tool dispatcher with safety checks and policy enforcement."""
+"""Allowlisted tool dispatcher with durable result persistence."""
 
-from typing import Any, Dict, Optional
-from .policies import PolicyEngine, ALLOWLISTED_ACTIONS
-from .tools import (
-    inspect_schema,
-    profile_nulls,
-    quarantine_batch,
-    retry_pipeline,
-    alert_engineer,
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable, Mapping
+from typing import Any, Literal
+
+from botocore.client import BaseClient
+
+from config.settings import Settings
+from dataops_agent.incident_state import (
+    ALLOWED_ACTIONS,
+    INCIDENT_STATUS_ACTION_FAILED,
+    INCIDENT_STATUS_ACTION_SUCCEEDED,
+    INCIDENT_STATUS_EVIDENCE_RECORDED,
+    INCIDENT_STATUS_FAILED,
+    INCIDENT_STATUS_MANUAL_REVIEW,
+    DataOpsIncident,
+    IncidentRepository,
+)
+from dataops_agent.tools import alert_engineer, inspect_schema, profile_nulls
+from dataops_agent.tools import quarantine_batch, retry_pipeline
+from dataops_agent.tools.base import (
+    ToolResult,
+    failure_result,
+    require_context,
+    require_non_empty,
 )
 
 
-class ToolDispatcher:
-    """Dispatches validated actions to allowable Python functions."""
+ToolPhase = Literal["evidence", "remediation"]
+ToolCallable = Callable[..., ToolResult]
 
-    def __init__(self, policy_engine: Optional[PolicyEngine] = None):
-        self.policy_engine = policy_engine or PolicyEngine()
-        self.tool_registry = {
-            "inspect_schema": self._exec_inspect_schema,
-            "profile_nulls": self._exec_profile_nulls,
-            "quarantine_batch": self._exec_quarantine,
-            "retry_pipeline": self._exec_retry,
-            "alert_engineer": self._exec_alert,
-        }
+LOGGER = logging.getLogger(__name__)
+
+TOOL_REGISTRY: dict[str, ToolCallable] = {
+    "inspect_schema": inspect_schema.execute,
+    "profile_nulls": profile_nulls.execute,
+    "quarantine_batch": quarantine_batch.execute,
+    "retry_pipeline": retry_pipeline.execute,
+    "alert_engineer": alert_engineer.execute,
+}
+
+
+class ToolDispatcher:
+    """Validate, execute, log, and persist allowlisted tool actions."""
+
+    def __init__(
+        self,
+        *,
+        repository: IncidentRepository | None = None,
+        settings: Settings | None = None,
+        s3_client: BaseClient | None = None,
+    ) -> None:
+        self._repository = repository or IncidentRepository()
+        self._settings = settings
+        self._s3_client = s3_client
 
     def dispatch(
         self,
-        action: str,
-        incident_type: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Validates action against policy engine and executes allowable tool."""
-        # 1. Policy check
-        is_allowed, approved_action, reason = self.policy_engine.validate_action(
+        *,
+        selected_action: str,
+        incident: DataOpsIncident,
+        phase: ToolPhase,
+        context: Mapping[str, Any] | None = None,
+    ) -> ToolResult:
+        """Execute an allowlisted tool and persist its result before status change."""
+
+        action = require_non_empty(selected_action, "selected_action")
+        normalized_phase = self._normalize_phase(phase)
+        tool_context = require_context(context)
+        fallback_from: str | None = None
+
+        if action not in ALLOWED_ACTIONS or action not in TOOL_REGISTRY:
+            fallback_from = action
+            action = "alert_engineer"
+            tool_context = {
+                **tool_context,
+                "fallback_reason": (
+                    f"unapproved action selected by decider: {fallback_from}"
+                ),
+            }
+            LOGGER.warning(
+                "unapproved tool action requested; falling back to alert_engineer",
+                extra={
+                    "incident_id": getattr(incident, "incident_id", None),
+                    "selected_action": fallback_from,
+                },
+            )
+
+        result = self._execute_tool(
             action=action,
-            incident_type=incident_type,
-            evidence=params
+            incident=incident,
+            context=tool_context,
+        )
+        if fallback_from is not None:
+            result = self._annotate_fallback(result, fallback_from)
+
+        payload = result.repository_payload(phase=normalized_phase, tool_name=action)
+        status = self._status_for(
+            action=action,
+            phase=normalized_phase,
+            result=result,
         )
 
-        if not is_allowed:
-            # Policy overrode action
-            action_to_run = approved_action
-            override_note = f"Policy override: {reason}"
-        else:
-            action_to_run = approved_action
-            override_note = None
-
-        tool_fn = self.tool_registry.get(action_to_run)
-        if not tool_fn:
-            return {
-                "status": "failed",
-                "error": f"Tool '{action_to_run}' has no implementation.",
-                "policy_override": override_note,
-            }
-
-        # 2. Tool execution
         try:
-            result = tool_fn(params)
-            if override_note:
-                result["policy_override"] = override_note
+            self._repository.record_tool_result(
+                str(getattr(incident, "incident_id")),
+                phase=normalized_phase,
+                tool_name=action,
+                tool_result=payload,
+                status=status,
+            )
+        except Exception as exc:
+            LOGGER.exception(
+                "failed to persist tool result",
+                extra={
+                    "incident_id": getattr(incident, "incident_id", None),
+                    "tool_name": action,
+                    "phase": normalized_phase,
+                },
+            )
+            return failure_result(
+                f"tool result persistence failed: {exc}",
+                {
+                    "tool": action,
+                    "phase": normalized_phase,
+                    "execution_error": True,
+                    "unpersisted_result": payload,
+                },
+            )
+
+        LOGGER.info(
+            "tool action completed",
+            extra={
+                "incident_id": getattr(incident, "incident_id", None),
+                "tool_name": action,
+                "phase": normalized_phase,
+                "success": result.success,
+                "status": status,
+            },
+        )
+        return result
+
+    def _execute_tool(
+        self,
+        *,
+        action: str,
+        incident: DataOpsIncident,
+        context: Mapping[str, Any],
+    ) -> ToolResult:
+        tool = TOOL_REGISTRY[action]
+        try:
+            result = tool(
+                incident,
+                context,
+                settings=self._settings,
+                s3_client=self._s3_client,
+                repository=self._repository,
+            )
+            if not isinstance(result, ToolResult):
+                return ToolResult.model_validate(result)
             return result
-        except Exception as e:
-            return {
-                "status": "failed",
-                "error": f"Execution error in tool {action_to_run}: {str(e)}",
-                "policy_override": override_note,
-            }
+        except Exception as exc:
+            LOGGER.exception(
+                "tool execution failed",
+                extra={
+                    "incident_id": getattr(incident, "incident_id", None),
+                    "tool_name": action,
+                },
+            )
+            return failure_result(
+                str(exc),
+                {
+                    "tool": action,
+                    "execution_error": True,
+                },
+            )
 
-    def _exec_inspect_schema(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        file_path = params.get("source_uri") or params.get("file_path")
-        contract = params.get("contract")
-        return inspect_schema(file_path=file_path, contract=contract)
+    @staticmethod
+    def _normalize_phase(phase: str) -> ToolPhase:
+        normalized = require_non_empty(phase, "phase")
+        if normalized not in {"evidence", "remediation"}:
+            raise ValueError("phase must be either evidence or remediation")
+        return normalized  # type: ignore[return-value]
 
-    def _exec_profile_nulls(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        file_path = params.get("source_uri") or params.get("file_path")
-        threshold = params.get("null_threshold")
-        return profile_nulls(file_path=file_path, threshold=threshold)
+    @staticmethod
+    def _status_for(
+        *,
+        action: str,
+        phase: ToolPhase,
+        result: ToolResult,
+    ) -> str:
+        if result.data.get("execution_error") is True:
+            return INCIDENT_STATUS_FAILED
+        if action == "alert_engineer":
+            return INCIDENT_STATUS_MANUAL_REVIEW
+        if phase == "evidence":
+            return INCIDENT_STATUS_EVIDENCE_RECORDED
+        if result.success:
+            return INCIDENT_STATUS_ACTION_SUCCEEDED
+        return INCIDENT_STATUS_ACTION_FAILED
 
-    def _exec_quarantine(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        source_path = params.get("source_uri") or params.get("file_path")
-        quarantine_dir = params.get("quarantine_dir")
-        incident_id = params.get("incident_id")
-        return quarantine_batch(source_path=source_path, quarantine_dir=quarantine_dir, incident_id=incident_id)
-
-    def _exec_retry(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        pipeline_name = params.get("pipeline_name", "orders_pipeline")
-        incident_id = params.get("incident_id", "unknown")
-        retry_count = params.get("retry_count", 0)
-        return retry_pipeline(pipeline_name=pipeline_name, incident_id=incident_id, current_retry_count=retry_count)
-
-    def _exec_alert(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        incident_id = params.get("incident_id", "unknown")
-        pipeline_name = params.get("pipeline_name", "orders_pipeline")
-        reason = params.get("reason") or params.get("error_summary", "Incident requires manual investigation")
-        severity = params.get("severity", "high")
-        return alert_engineer(incident_id=incident_id, pipeline_name=pipeline_name, reason=reason, severity=severity)
+    @staticmethod
+    def _annotate_fallback(result: ToolResult, fallback_from: str) -> ToolResult:
+        data = {
+            **result.data,
+            "fallback_from_unapproved_action": fallback_from,
+            "fallback_action": "alert_engineer",
+        }
+        if result.success:
+            return ToolResult(success=True, data=data)
+        return ToolResult(success=False, data=data, error=result.error)
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=DataOps incident dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dataops
+Group=dataops
+WorkingDirectory=/opt/dataops/app
+EnvironmentFile=/etc/dataops/runtime.env
+ExecStart=/opt/dataops/venv/bin/python -m streamlit run dashboard/app.py --server.address 127.0.0.1 --server.port 8501 --server.baseUrlPath dashboard --server.headless true --browser.gatherUsageStats false
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+-r ../../requirements.txt
+
+# Versions already exercised by this project. All installation happens on AWS.
+dagster==1.13.7
+dagster-webserver==1.13.7
+streamlit==1.50.0
+strands-decider==0.1.0
+transformers==5.20.1
+bcrypt>=4.2

@@ -1,0 +1,338 @@
+{
+  "campaign": "20261018T205950Z-2afc5252",
+  "threshold": 0.15,
+  "bucket": "agentic-dataops-731451715213-us-east-1",
+  "results": [
+    {
+      "name": "clean",
+      "file": "clean.csv",
+      "description": "20 complete, valid orders",
+      "expected_status": "SUCCESS",
+      "expected_incident_type": null,
+      "rows": 20,
+      "actual_status": "SUCCESS",
+      "run_id": "a3aa370f-3694-4ac3-af8d-a7a97f7540e9",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/clean.csv",
+      "silver_exists": true,
+      "silver_rows": 20,
+      "silver_content_matches_input": true,
+      "matched": true,
+      "incidents": []
+    },
+    {
+      "name": "reordered_columns",
+      "file": "reordered_columns.csv",
+      "description": "Valid orders with columns in a different order",
+      "expected_status": "SUCCESS",
+      "expected_incident_type": null,
+      "rows": 20,
+      "actual_status": "SUCCESS",
+      "run_id": "01f4f32f-99e8-448c-83c0-a28137b4d89f",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/reordered_columns.csv",
+      "silver_exists": true,
+      "silver_rows": 20,
+      "silver_content_matches_input": true,
+      "matched": true,
+      "incidents": []
+    },
+    {
+      "name": "nulls_10_percent",
+      "file": "nulls_10_percent.csv",
+      "description": "2/20 missing status values; limit is 15%",
+      "expected_status": "SUCCESS",
+      "expected_incident_type": null,
+      "rows": 20,
+      "actual_status": "SUCCESS",
+      "run_id": "aa0b7eff-c103-4e7e-8633-3420a073351a",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/nulls_10_percent.csv",
+      "silver_exists": true,
+      "silver_rows": 20,
+      "silver_content_matches_input": true,
+      "matched": true,
+      "incidents": []
+    },
+    {
+      "name": "nulls_15_percent",
+      "file": "nulls_15_percent.csv",
+      "description": "3/20 missing status values; limit is 15%",
+      "expected_status": "SUCCESS",
+      "expected_incident_type": null,
+      "rows": 20,
+      "actual_status": "SUCCESS",
+      "run_id": "fa368e76-b9eb-473a-b20a-cc21391fd862",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/nulls_15_percent.csv",
+      "silver_exists": true,
+      "silver_rows": 20,
+      "silver_content_matches_input": true,
+      "matched": true,
+      "incidents": []
+    },
+    {
+      "name": "nulls_20_percent",
+      "file": "nulls_20_percent.csv",
+      "description": "4/20 missing status values; limit is 15%",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "null_threshold_breach",
+      "rows": 20,
+      "actual_status": "FAILURE",
+      "run_id": "5cfd958d-6daf-4696-ab24-0c97ef996a5a",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/nulls_20_percent.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_83cb81da86533a14bc512dee57982a0f",
+          "type": "null_threshold_breach",
+          "status": "pending",
+          "errors": [
+            "null threshold breaches detected"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "clean_large",
+      "file": "clean_large.csv",
+      "description": "1,100 valid orders",
+      "expected_status": "SUCCESS",
+      "expected_incident_type": null,
+      "rows": 1100,
+      "actual_status": "SUCCESS",
+      "run_id": "403604ec-35a2-4a25-8b58-69dbca3575fb",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/clean_large.csv",
+      "silver_exists": true,
+      "silver_rows": 1100,
+      "silver_content_matches_input": true,
+      "matched": true,
+      "incidents": []
+    },
+    {
+      "name": "missing_currency",
+      "file": "missing_currency.csv",
+      "description": "Required currency column is absent",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "schema_drift",
+      "rows": 20,
+      "actual_status": "FAILURE",
+      "run_id": "64e2b609-41b1-412c-9f35-043e5725e94a",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/missing_currency.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_d7561db3f7c03276106d97f5aad6118c",
+          "type": "schema_drift",
+          "status": "pending",
+          "errors": [
+            "missing required columns"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "extra_column",
+      "file": "extra_column.csv",
+      "description": "Unexpected promo_code column",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "schema_drift",
+      "rows": 20,
+      "actual_status": "FAILURE",
+      "run_id": "5766574e-7338-46d8-b315-b3c3d075101d",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/extra_column.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_a122a95c53d3e853e8876b008aeca9bf",
+          "type": "schema_drift",
+          "status": "pending",
+          "errors": [
+            "unexpected extra columns"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid_amount",
+      "file": "invalid_amount.csv",
+      "description": "One text value among numeric amounts",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "schema_drift",
+      "rows": 20,
+      "actual_status": "FAILURE",
+      "run_id": "59b99065-c3b4-444a-b181-81cad8ad67dd",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/invalid_amount.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_89dbe207623c3668f40a18bf6d8529f0",
+          "type": "schema_drift",
+          "status": "pending",
+          "errors": [
+            "column type drift detected"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid_date",
+      "file": "invalid_date.csv",
+      "description": "One impossible date among valid dates",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "schema_drift",
+      "rows": 20,
+      "actual_status": "FAILURE",
+      "run_id": "1ec6940e-8690-4816-829d-b8454ea15405",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/invalid_date.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_df7a584eefd2156a80feb2fd7e8c2a60",
+          "type": "schema_drift",
+          "status": "pending",
+          "errors": [
+            "column type drift detected"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mixed_bad_rows",
+      "file": "mixed_bad_rows.csv",
+      "description": "Good rows mixed with bad amounts, dates, and excessive nulls",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "data_quality_failure",
+      "rows": 20,
+      "actual_status": "FAILURE",
+      "run_id": "bd4fd48b-ff53-46a4-b367-ddcf4fc02fbd",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/mixed_bad_rows.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_7da0b616deffc0fc7ab6e369b9fc1b7f",
+          "type": "data_quality_failure",
+          "status": "pending",
+          "errors": [
+            "column type drift detected",
+            "null threshold breaches detected"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "late_invalid_amount",
+      "file": "late_invalid_amount.csv",
+      "description": "Bad amount in data row 1,051 of 1,100",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "schema_drift",
+      "rows": 1100,
+      "actual_status": "FAILURE",
+      "run_id": "99240655-fdfc-4dd5-ab29-afa37d104fa4",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/late_invalid_amount.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_d95d5c3353365bb0d4ca9f477245ee8b",
+          "type": "schema_drift",
+          "status": "pending",
+          "errors": [
+            "column type drift detected"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "header_only",
+      "file": "header_only.csv",
+      "description": "Column headers with no order rows",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "data_quality_failure",
+      "rows": 0,
+      "actual_status": "FAILURE",
+      "run_id": "b3b61980-6682-4ea8-bdb8-cc043225349e",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/header_only.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_bad7b04e63de21da7730c2e38caaf4d3",
+          "type": "data_quality_failure",
+          "status": "pending",
+          "errors": [
+            "orders frame is empty"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "empty_file",
+      "file": "empty_file.csv",
+      "description": "Completely empty CSV",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "data_quality_failure",
+      "rows": 0,
+      "actual_status": "FAILURE",
+      "run_id": "4620f5aa-412e-4c8e-98e3-9173217e13ee",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/empty_file.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_74c872a4bc8fa7f87b5445ae0df4283e",
+          "type": "data_quality_failure",
+          "status": "pending",
+          "errors": [
+            "CSV parsing failed: No columns to parse from file"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "malformed_csv",
+      "file": "malformed_csv.csv",
+      "description": "Unclosed quote prevents CSV parsing",
+      "expected_status": "FAILURE",
+      "expected_incident_type": "data_quality_failure",
+      "rows": 0,
+      "actual_status": "FAILURE",
+      "run_id": "553748c2-c1c8-4b28-b92e-96764fe3915f",
+      "source_uri": "s3://agentic-dataops-731451715213-us-east-1/bronze/mixed-tests/20261018T205950Z-2afc5252/malformed_csv.csv",
+      "silver_exists": false,
+      "silver_rows": null,
+      "silver_content_matches_input": null,
+      "matched": true,
+      "incidents": [
+        {
+          "id": "orders_data_quality_9b82f6191b4fe34e0ab664bf25eb6a7d",
+          "type": "data_quality_failure",
+          "status": "pending",
+          "errors": [
+            "CSV parsing failed: Error tokenizing data. C error: EOF inside string starting at row 1"
+          ]
+        }
+      ]
+    }
+  ]
+}
