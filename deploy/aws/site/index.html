@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic AWS DataOps — Team demo</title>
+<style>
+body{font:17px/1.6 system-ui,sans-serif;max-width:760px;margin:70px auto;padding:0 24px;color:#172b45;background:#f5f8fc}
+h1{line-height:1.2}a{color:#1258aa}nav{display:flex;gap:18px;flex-wrap:wrap;margin:30px 0}nav a{padding:14px 22px;border-radius:8px;background:#183e68;color:white;text-decoration:none}
+code,pre{background:#e7edf5;border-radius:5px}pre{padding:18px;overflow:auto;font-size:14px}
+</style>
+<h1>Agentic AWS DataOps</h1>
+<p>Validate orders from S3, investigate data quality failures, and review incidents together.</p>
+<nav><a href="/dagster/">Open Dagster</a><a href="/dashboard/">Open incident dashboard</a></nav>
+<h2>Try an existing batch</h2>
+<ol>
+<li>In Dagster, open <strong>Jobs → orders_data_quality_job → Launchpad</strong>.</li>
+<li>Use the configuration below, then click <strong>Launch Run</strong>.</li>
+<li>A clean batch succeeds and writes to S3 Silver. A broken batch fails validation and creates an incident in the dashboard.</li>
+</ol>
+<pre>ops:
+  bronze_orders:
+    config:
+      source_key: bronze/orders.csv
+  silver_orders:
+    config:
+      source_key: bronze/orders.csv</pre>
+<p>For a broken batch, replace both source keys with <code>bronze/high_nulls.csv</code> or <code>bronze/unexpected_column.csv</code>.</p>
+<p>For 1,100 rows, use <code>bronze/mixed-tests/20261018T205950Z-2afc5252/clean_large.csv</code>. The broken counterpart is <code>bronze/mixed-tests/20261018T205950Z-2afc5252/late_invalid_amount.csv</code>.</p>
+<p>This is a shared workspace: teammates see the same incidents and changes. Jobs run one at a time on AWS. Automatic remediation starts only when the incident sensor is enabled; email notifications are disabled for this demo.</p>
+<p>Code changes belong in the shared repository. An authorized maintainer can deploy an updated checkout using the repository's team deployment instructions.</p>
+</html>

@@ -1,152 +1,203 @@
-"""Amazon Bedrock integration for incident report generation."""
+"""Bedrock-backed incident postmortem report generation."""
 
-import os
+from __future__ import annotations
+
 import json
-from typing import Any, Dict, Optional
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+import logging
+from collections.abc import Mapping
+from typing import Any
 
-DEFAULT_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+from botocore.client import BaseClient
+
+from config.settings import Settings, get_bedrock_runtime_client, get_settings
+from dataops_agent.decider_client import DeciderDecision
+from dataops_agent.tools.base import ToolResult, ensure_json_object, incident_snapshot
+
+
+LOGGER = logging.getLogger(__name__)
+
+SYSTEM_PROMPT = """You are an AWS DataOps incident postmortem writer.
+Return concise Markdown with exactly these sections:
+# Incident Report
+## Summary
+## Root Cause
+## Evidence
+## Deterministic Action Taken
+## Recommended Engineer Actions
+
+Use only facts from the JSON payload. If a fact is unknown, write "unknown".
+Do not invent identifiers, timestamps, S3 keys, or remediation outcomes."""
 
 
 class BedrockReportGenerator:
-    """Generates verifiable incident summaries and next steps via Amazon Bedrock."""
+    """Generate structured Markdown incident reports using Bedrock Converse."""
 
     def __init__(
         self,
-        region_name: Optional[str] = None,
-        model_id: Optional[str] = None
-    ):
-        self.region_name = region_name or os.getenv("AWS_REGION", "us-east-1")
-        self.model_id = model_id or DEFAULT_MODEL_ID
-        self._bedrock_client = None
-
-    def _get_client(self):
-        if self._bedrock_client is None:
-            self._bedrock_client = boto3.client(
-                service_name="bedrock-runtime",
-                region_name=self.region_name
-            )
-        return self._bedrock_client
+        *,
+        settings: Settings | None = None,
+        bedrock_client: BaseClient | None = None,
+        max_tokens: int = 1200,
+    ) -> None:
+        if max_tokens < 256:
+            raise ValueError("max_tokens must be at least 256")
+        self._settings = settings
+        self._bedrock_client = bedrock_client
+        self._max_tokens = max_tokens
 
     def generate_report(
         self,
-        incident_id: str,
-        pipeline_name: str,
-        incident_type: str,
-        evidence: Dict[str, Any],
-        selected_action: str,
-        tool_result: Dict[str, Any]
+        *,
+        incident: Any,
+        evidence_decision: DeciderDecision,
+        evidence_result: ToolResult,
+        remediation_decision: DeciderDecision,
+        remediation_result: ToolResult,
     ) -> str:
-        """Synthesizes structured telemetry and tool results into an operational incident report."""
-        prompt = self._build_prompt(
-            incident_id=incident_id,
-            pipeline_name=pipeline_name,
-            incident_type=incident_type,
-            evidence=evidence,
-            selected_action=selected_action,
-            tool_result=tool_result,
-        )
+        """Generate a Markdown report, falling back deterministically on AWS failure."""
 
+        payload = self._report_payload(
+            incident=incident,
+            evidence_decision=evidence_decision,
+            evidence_result=evidence_result,
+            remediation_decision=remediation_decision,
+            remediation_result=remediation_result,
+        )
         try:
-            client = self._get_client()
-            # Payload tailored for Claude 3 models via Bedrock Messages API
-            body = json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1024,
-                "temperature": 0.2,
-                "messages": [
+            settings = self._settings or get_settings()
+            client = self._bedrock_client or get_bedrock_runtime_client(settings)
+            response = client.converse(
+                modelId=settings.BEDROCK_MODEL_ID,
+                system=[{"text": SYSTEM_PROMPT}],
+                messages=[
                     {
                         "role": "user",
-                        "content": prompt,
+                        "content": [
+                            {
+                                "text": (
+                                    "Write the incident report from this JSON payload:\n"
+                                    + json.dumps(payload, sort_keys=True, indent=2)
+                                )
+                            }
+                        ],
                     }
                 ],
-            })
-
-            response = client.invoke_model(
-                modelId=self.model_id,
-                body=body,
-                contentType="application/json",
-                accept="application/json",
+                inferenceConfig={
+                    "maxTokens": self._max_tokens,
+                    "temperature": 0.0,
+                },
+                requestMetadata={
+                    "component": "agentic-aws-dataops",
+                    "incident_id": str(payload["incident"].get("incident_id") or "unknown"),
+                },
             )
-            response_body = json.loads(response["body"].read().decode("utf-8"))
-            return response_body["content"][0]["text"]
-
-        except (BotoCoreError, ClientError, Exception) as e:
-            # Fallback deterministic report if Bedrock credentials or network unavailable
-            return self._generate_fallback_report(
-                incident_id=incident_id,
-                pipeline_name=pipeline_name,
-                incident_type=incident_type,
-                evidence=evidence,
-                selected_action=selected_action,
-                tool_result=tool_result,
-                error_note=str(e),
+            report = self._extract_text(response)
+            if report.strip() == "":
+                raise ValueError("Bedrock returned an empty report")
+            return report.strip()
+        except Exception as exc:
+            LOGGER.warning(
+                "Bedrock report generation failed; using deterministic report",
+                extra={
+                    "incident_id": payload["incident"].get("incident_id"),
+                    "error_type": type(exc).__name__,
+                },
             )
+            return deterministic_report(payload, error=str(exc))
 
-    def _build_prompt(
-        self,
-        incident_id: str,
-        pipeline_name: str,
-        incident_type: str,
-        evidence: Dict[str, Any],
-        selected_action: str,
-        tool_result: Dict[str, Any]
-    ) -> str:
-        return f"""You are an expert DataOps Incident Response Engineer. Generate a concise, factual incident report based solely on the verified evidence below. Never claim an action succeeded unless confirmed by the tool result.
+    @staticmethod
+    def _report_payload(
+        *,
+        incident: Any,
+        evidence_decision: DeciderDecision,
+        evidence_result: ToolResult,
+        remediation_decision: DeciderDecision,
+        remediation_result: ToolResult,
+    ) -> dict[str, Any]:
+        return ensure_json_object(
+            {
+                "incident": incident_snapshot(incident),
+                "evidence_decision": evidence_decision.repository_metadata(),
+                "evidence_result": evidence_result.model_dump(mode="json"),
+                "remediation_decision": remediation_decision.repository_metadata(),
+                "remediation_result": remediation_result.model_dump(mode="json"),
+                "existing_evidence_json": getattr(incident, "evidence_json", {}) or {},
+                "existing_action_result": getattr(incident, "action_result", None),
+            },
+            "report_payload",
+        )
 
-Incident Details:
-- Incident ID: {incident_id}
-- Pipeline Name: {pipeline_name}
-- Classification: {incident_type}
-- Diagnostic Evidence: {json.dumps(evidence, indent=2)}
-- Strands Decider Choice: {selected_action}
-- Confirmed Tool Execution Result: {json.dumps(tool_result, indent=2)}
+    @staticmethod
+    def _extract_text(response: Mapping[str, Any]) -> str:
+        message = response["output"]["message"]
+        content_blocks = message["content"]
+        if not isinstance(content_blocks, list):
+            raise TypeError("Bedrock response content must be a list")
+        parts = []
+        for block in content_blocks:
+            if isinstance(block, Mapping) and isinstance(block.get("text"), str):
+                parts.append(block["text"])
+        return "\n".join(parts)
 
-Format the report with these sections:
-1. Incident Summary
-2. Probable Cause
-3. Evidence Gathered
-4. Action Taken & Confirmed Outcome
-5. Remaining Uncertainty
-6. Recommended Next Steps
-"""
 
-    def _generate_fallback_report(
-        self,
-        incident_id: str,
-        pipeline_name: str,
-        incident_type: str,
-        evidence: Dict[str, Any],
-        selected_action: str,
-        tool_result: Dict[str, Any],
-        error_note: str
-    ) -> str:
-        outcome_status = tool_result.get("status", "unknown")
-        confirmation = tool_result.get("confirmation") or tool_result.get("error") or "Execution recorded."
+def deterministic_report(payload: Mapping[str, Any], *, error: str | None = None) -> str:
+    """Build a deterministic Markdown report when Bedrock is unavailable."""
 
-        return f"""### Incident Report: {incident_id}
-*Generated via DataOps Local Reporter (Bedrock offline: {error_note[:80]}...)*
+    incident = _mapping(payload.get("incident"))
+    evidence_decision = _mapping(payload.get("evidence_decision"))
+    evidence_result = _mapping(payload.get("evidence_result"))
+    remediation_decision = _mapping(payload.get("remediation_decision"))
+    remediation_result = _mapping(payload.get("remediation_result"))
 
-**1. Incident Summary:**
-Pipeline `{pipeline_name}` encountered a `{incident_type}` failure during dataset validation.
+    incident_id = _text(incident.get("incident_id"), "unknown")
+    pipeline_name = _text(incident.get("pipeline_name"), "unknown")
+    incident_type = _text(incident.get("incident_type"), "unknown")
+    error_summary = _text(incident.get("error_summary"), "unknown")
+    source_uri = _text(incident.get("source_uri"), "unknown")
+    evidence_action = _text(evidence_decision.get("selected_action"), "unknown")
+    remediation_action = _text(remediation_decision.get("selected_action"), "unknown")
+    remediation_success = _text(remediation_result.get("success"), "unknown")
 
-**2. Probable Cause:**
-Investigation identified contract discrepancy or quality threshold breach: {evidence.get('error_summary', 'Dataset validation failure')}.
+    fallback_note = ""
+    if error is not None and error.strip() != "":
+        fallback_note = (
+            "\n\nBedrock report generation failed; this deterministic report was "
+            f"generated locally. Error: `{_escape_markdown_inline(error)}`"
+        )
 
-**3. Evidence Gathered:**
-- Observed diagnostic data: {json.dumps(evidence.get('diagnostic_output', evidence), default=str)}
+    return (
+        "# Incident Report\n"
+        "## Summary\n"
+        f"Incident `{incident_id}` for pipeline `{pipeline_name}` failed with "
+        f"incident type `{incident_type}`. Source URI: `{source_uri}`.\n\n"
+        "## Root Cause\n"
+        f"{error_summary}\n\n"
+        "## Evidence\n"
+        f"Evidence action `{evidence_action}` completed with success="
+        f"`{_text(evidence_result.get('success'), 'unknown')}`.\n\n"
+        "## Deterministic Action Taken\n"
+        f"Remediation action `{remediation_action}` completed with success="
+        f"`{remediation_success}`.\n\n"
+        "## Recommended Engineer Actions\n"
+        "- Review persisted evidence and tool results in PostgreSQL.\n"
+        "- Verify the source batch lineage before rerunning downstream assets.\n"
+        "- Confirm whether manual repair, quarantine review, or producer escalation is required."
+        f"{fallback_note}"
+    )
 
-**4. Action Taken & Confirmed Outcome:**
-- **Selected Action:** `{selected_action}`
-- **Execution Status:** `{outcome_status}`
-- **Confirmed Result:** {confirmation}
 
-**5. Remaining Uncertainty:**
-- Compatibility with downstream models and consumer contracts remains unverified until reviewed.
+def _mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
 
-**6. Recommended Next Steps:**
-- Review schema changes with data contract owners.
-- Update pipeline expectations if new columns or null rates are legitimate.
-"""
 
+def _text(value: Any, default: str) -> str:
+    if value is None:
+        return default
+    normalized = str(value).strip()
+    return normalized if normalized else default
+
+
+def _escape_markdown_inline(value: str) -> str:
+    return value.replace("`", "'")[:500]

@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentic-dataops-postgres
+    environment:
+      POSTGRES_DB: dataops
+      POSTGRES_USER: dataops
+      POSTGRES_PASSWORD: dataops
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dataops -d dataops"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  localstack:
+    image: localstack/localstack:3
+    container_name: agentic-dataops-localstack
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      S3_BUCKET_NAME: agentic-dataops-local
+      DEBUG: "0"
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./localstack/init:/etc/localstack/init/ready.d:ro
+      - ./sample_data:/opt/localstack/sample_data:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/health | grep '\"s3\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres-data:
+  localstack-data:
+

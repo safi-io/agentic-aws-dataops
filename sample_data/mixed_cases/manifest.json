@@ -1,0 +1,122 @@
+[
+  {
+    "name": "clean",
+    "file": "clean.csv",
+    "description": "20 complete, valid orders",
+    "expected_status": "SUCCESS",
+    "expected_incident_type": null,
+    "rows": 20
+  },
+  {
+    "name": "reordered_columns",
+    "file": "reordered_columns.csv",
+    "description": "Valid orders with columns in a different order",
+    "expected_status": "SUCCESS",
+    "expected_incident_type": null,
+    "rows": 20
+  },
+  {
+    "name": "nulls_10_percent",
+    "file": "nulls_10_percent.csv",
+    "description": "2/20 missing status values; limit is 15%",
+    "expected_status": "SUCCESS",
+    "expected_incident_type": null,
+    "rows": 20
+  },
+  {
+    "name": "nulls_15_percent",
+    "file": "nulls_15_percent.csv",
+    "description": "3/20 missing status values; limit is 15%",
+    "expected_status": "SUCCESS",
+    "expected_incident_type": null,
+    "rows": 20
+  },
+  {
+    "name": "nulls_20_percent",
+    "file": "nulls_20_percent.csv",
+    "description": "4/20 missing status values; limit is 15%",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "null_threshold_breach",
+    "rows": 20
+  },
+  {
+    "name": "clean_large",
+    "file": "clean_large.csv",
+    "description": "1,100 valid orders",
+    "expected_status": "SUCCESS",
+    "expected_incident_type": null,
+    "rows": 1100
+  },
+  {
+    "name": "missing_currency",
+    "file": "missing_currency.csv",
+    "description": "Required currency column is absent",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "schema_drift",
+    "rows": 20
+  },
+  {
+    "name": "extra_column",
+    "file": "extra_column.csv",
+    "description": "Unexpected promo_code column",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "schema_drift",
+    "rows": 20
+  },
+  {
+    "name": "invalid_amount",
+    "file": "invalid_amount.csv",
+    "description": "One text value among numeric amounts",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "schema_drift",
+    "rows": 20
+  },
+  {
+    "name": "invalid_date",
+    "file": "invalid_date.csv",
+    "description": "One impossible date among valid dates",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "schema_drift",
+    "rows": 20
+  },
+  {
+    "name": "mixed_bad_rows",
+    "file": "mixed_bad_rows.csv",
+    "description": "Good rows mixed with bad amounts, dates, and excessive nulls",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "data_quality_failure",
+    "rows": 20
+  },
+  {
+    "name": "late_invalid_amount",
+    "file": "late_invalid_amount.csv",
+    "description": "Bad amount in data row 1,051 of 1,100",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "schema_drift",
+    "rows": 1100
+  },
+  {
+    "name": "header_only",
+    "file": "header_only.csv",
+    "description": "Column headers with no order rows",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "data_quality_failure",
+    "rows": 0
+  },
+  {
+    "name": "empty_file",
+    "file": "empty_file.csv",
+    "description": "Completely empty CSV",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "data_quality_failure",
+    "rows": 0
+  },
+  {
+    "name": "malformed_csv",
+    "file": "malformed_csv.csv",
+    "description": "Unclosed quote prevents CSV parsing",
+    "expected_status": "FAILURE",
+    "expected_incident_type": "data_quality_failure",
+    "rows": 0
+  }
+]

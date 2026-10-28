@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Password-protected DataOps team demo using existing S3 and PostgreSQL.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  ImageId:
+    Type: AWS::EC2::Image::Id
+  InstanceType:
+    Type: String
+    Default: t3a.large
+    AllowedValues: [t3a.large, t3.large, t3a.xlarge]
+  DataBucket:
+    Type: String
+    AllowedPattern: '[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]'
+  SourceKey:
+    Type: String
+    AllowedPattern: 'deployments/team/[a-f0-9]+\.tar\.gz'
+  DatabaseHost:
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9.-]+'
+  DatabaseSecretArn:
+    Type: String
+    Description: ARN only; the server retrieves the database secret at startup.
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+Resources:
+  TeamLogin:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Shared web login for the DataOps team demo.
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"team"}'
+        GenerateStringKey: password
+        PasswordLength: 28
+        ExcludePunctuation: true
+  ServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ApplicationResources
+          # Scoped from IAM Policy Autopilot's generated runtime actions.
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${DataBucket}/bronze/*
+                  - !Sub arn:${AWS::Partition}:s3:::${DataBucket}/silver/shared-demo/*
+                  - !Sub arn:${AWS::Partition}:s3:::${DataBucket}/quarantine/shared-demo/*
+                  - !Sub arn:${AWS::Partition}:s3:::${DataBucket}/deployments/team/*
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${DataBucket}/silver/shared-demo/*
+                  - !Sub arn:${AWS::Partition}:s3:::${DataBucket}/quarantine/shared-demo/*
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref DatabaseSecretArn, !Ref TeamLogin]
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-micro-v1:0
+  ServerProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref ServerRole]
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: HTTPS team demo and HTTP certificate validation; administration through SSM.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP redirects and ACME certificate validation
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Password-protected HTTPS gateway
+  DatabaseAccess:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: DataOps team server
+  PublicAddress:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-address
+  Server:
+    Type: AWS::EC2::Instance
+    DependsOn: DatabaseAccess
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref ServerProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: [!Ref WebSecurityGroup]
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      CreditSpecification:
+        CPUCredits: standard
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 40
+            Encrypted: true
+            DeleteOnTermination: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-server
+        - Key: Project
+          Value: AgenticDataOps
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y python3-venv
+          install -d /opt/dataops/releases/initial /etc/dataops
+          python3 -m venv /opt/dataops/bootstrap-venv
+          /opt/dataops/bootstrap-venv/bin/pip install --no-cache-dir boto3
+          export AWS_DEFAULT_REGION='${AWS::Region}'
+          export DATAOPS_BUCKET='${DataBucket}'
+          export DATAOPS_RDS_HOST='${DatabaseHost}'
+          export DATAOPS_DB_SECRET_ARN='${DatabaseSecretArn}'
+          export DATAOPS_TEAM_SECRET_ARN='${TeamLogin}'
+          export DATAOPS_PUBLIC_HOST='${PublicAddress}.sslip.io'
+          /opt/dataops/bootstrap-venv/bin/python - <<'PY'
+          import boto3, json, os, pathlib, tarfile
+          s3 = boto3.client('s3')
+          s3.download_file('${DataBucket}', '${SourceKey}', '/opt/dataops/source.tar.gz')
+          with tarfile.open('/opt/dataops/source.tar.gz') as archive:
+              archive.extractall('/opt/dataops/releases/initial', filter='data')
+          settings = {k: v for k, v in os.environ.items() if k.startswith('DATAOPS_') or k == 'AWS_DEFAULT_REGION'}
+          target = pathlib.Path('/etc/dataops/deployment.json')
+          target.write_text(json.dumps(settings))
+          target.chmod(0o600)
+          PY
+          ln -s /opt/dataops/releases/initial /opt/dataops/app
+          bash /opt/dataops/app/deploy/aws/bootstrap.sh
+  AddressAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt PublicAddress.AllocationId
+      InstanceId: !Ref Server
+Outputs:
+  TeamUrl:
+    Description: HTTPS team landing page (available after server bootstrap completes).
+    Value: !Sub https://${PublicAddress}.sslip.io
+  DagsterUrl:
+    Description: Shared Dagster workspace.
+    Value: !Sub https://${PublicAddress}.sslip.io/dagster/
+  DashboardUrl:
+    Description: Shared incident dashboard.
+    Value: !Sub https://${PublicAddress}.sslip.io/dashboard/
+  InstanceId:
+    Description: Server for Systems Manager administration and stop/start.
+    Value: !Ref Server
+  LoginSecretArn:
+    Description: Retrieve the team login here; no password is exposed in stack outputs.
+    Value: !Ref TeamLogin

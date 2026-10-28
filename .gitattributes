@@ -1,0 +1,2 @@
+deploy/aws/*.sh text eol=lf
+localstack/init/*.sh text eol=lf

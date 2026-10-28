@@ -1,0 +1,7 @@
+ops:
+  bronze_orders:
+    config:
+      source_key: bronze/unexpected_column.csv
+  silver_orders:
+    config:
+      source_key: bronze/unexpected_column.csv

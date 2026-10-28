@@ -1,56 +1,22 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
-.venv/
-env/
-venv/
-ENV/
-
-# Environment Variables
 .env
-.env.local
-.env.*.local
-
-# Dagster
-.dagster/
-dagster_home/
-storage/
-history/
-
-# Testing & Coverage
+.env.*
+!.env.example
+!.env.aws.example
+__pycache__/
+*.pyc
+logs/
+.tmp_dagster_home*/
+.dagster_home/
 .pytest_cache/
-.coverage
-htmlcov/
-
-# Logs
-*.log
-.telemetry/
-
-# Streamlit
-.streamlit/secrets.toml
-
-# IDE / Editor
+.deployment/
+.venv/
+venv/
 .vscode/
 .idea/
-*.swp
-*.swo
+.agents/
+.codex/
+.aws/
+*.code-workspace
+config.toml1
+friend-agentic-aws-dataops/
+
